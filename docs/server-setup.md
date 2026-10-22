@@ -125,3 +125,24 @@ UFW активирован.
 1. `01-clean-install` — исходное состояние после установки системы
 2. `02-keys-configured` — настроена аутентификация по SSH-ключу
 3. `03-ssh-hardened` — выполнено усиление конфигурации SSH
+4. `04-nginx-https` — опубликован ресурс и настроен HTTPS
+
+## 8. Веб-сервер
+
+- Пакет: `nginx`; служба `nginx.service` включена и запущена.
+- Конфигурация ресурса: `/etc/nginx/sites-available/devops-site`; в `/etc/nginx/sites-enabled/devops-site` находится символическая ссылка на неё. Стандартный ресурс отключён удалением ссылки `/etc/nginx/sites-enabled/default`.
+- Имя ресурса: `devops.local`. Порт 80 перенаправляет запросы кодом 301 на HTTPS; порт 443 обслуживает статические файлы. После изменения конфигурации используются `sudo nginx -t && sudo systemctl reload nginx`.
+- Каталог ресурса: `/var/www/devops-site`, владелец `devops:devops`, права каталогов `755`, файлов `644`. Рабочие процессы Nginx от имени `www-data` могут читать файлы, но не изменять их. Доставка выполняется из `site/` командой `scripts/deploy.sh` через `rsync` с `--delete --chmod=D755,F644`.
+- Самоподписанный сертификат: `/etc/ssl/certs/devops.crt`, владелец `root:root`, права `644`.
+- Закрытый ключ: `/etc/ssl/private/devops.key`, владелец `root:root`, права `600`. Ключ не копируется на хостовую систему и не добавляется в репозиторий.
+- Сертификат сформирован на 365 дней с именем `CN=devops.local` и расширением `subjectAltName=DNS:devops.local`:
+
+```bash
+sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout /etc/ssl/private/devops.key \
+  -out /etc/ssl/certs/devops.crt \
+  -subj "/CN=devops.local" \
+  -addext "subjectAltName=DNS:devops.local"
+```
+
+Сертификат проверяется на хосте командой `curl --cacert ~/devops.crt -I https://devops.local`. Файл `~/devops.crt` передаётся с сервера по SSH; параметр `-k` не используется.
