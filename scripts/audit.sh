@@ -86,6 +86,31 @@ else
 fi
 check "Нет записи для всех; права ключа 600" "secure" "$permissions_status"
 
+
+echo "[5] Контейнеризация"
+
+check "Служба Docker активна" \
+    "active" \
+    "$(systemctl is-active docker 2>/dev/null)"
+
+check "PostgreSQL находится в состоянии healthy" \
+    "healthy" \
+    "$(docker inspect -f '{{.State.Health.Status}}' app-db-1 2>/dev/null || true)"
+
+if sockets="$(sudo ss -H -ltn)"; then
+    ports_status="$(awk '
+        $4 ~ /:(5000|5432)$/ && $4 !~ /^127[.]0[.]0[.]1:/ {bad=1}
+        END {print bad ? "exposed" : "local"}
+    ' <<< "$sockets")"
+else
+    ports_status="error"
+fi
+check "Порты 5000 и 5432 не открыты наружу" "local" "$ports_status"
+
+check "Права файла .env равны 600" \
+    "600" \
+    "$(stat -c '%a' /home/devops/app/.env 2>/dev/null || true)"
+
 echo "Пройдено: $PASS, не пройдено: $FAIL"
 
 [[ $FAIL -eq 0 ]] && exit 0 || exit 1

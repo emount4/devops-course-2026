@@ -146,3 +146,55 @@ sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
 ```
 
 Сертификат проверяется на хосте командой `curl --cacert ~/devops.crt -I https://devops.local`. Файл `~/devops.crt` передаётся с сервера по SSH; параметр `-k` не используется.
+
+
+## 9. Контейнеризация
+Docker Engine Community 29.9.2 установлен из официального apt-репозитория
+https://download.docker.com/linux/ubuntu.
+Установлены docker-ce, docker-ce-cli, containerd.io,
+docker-buildx-plugin и docker-compose-plugin.
+Версия Docker Compose: v5.6.1.
+Пользователь devops добавлен в группу docker.
+
+Исходники расположены в app/ репозитория devops-course-2026 в WSL.
+На сервер файлы доставляются командой:
+`rsync -avz --delete --exclude=.env app/ devops:app/`.
+
+Проект на сервере: /home/devops/app.
+Приложение Flask запускается через Gunicorn от пользователя app.
+Образ приложения: devops-app:1.0.
+Образ СУБД: postgres:16-alpine.
+
+Файл /home/devops/app/.env создаётся только на сервере,
+имеет права 600 и содержит случайный пароль PostgreSQL.
+В Git хранится только .env.example с заглушкой.
+Файл .env исключён из Git и контекста сборки Docker.
+
+Compose создаёт сеть app_backend типа bridge.
+Приложение обращается к PostgreSQL по имени db и порту 5432.
+Healthcheck pg_isready проверяет готовность СУБД.
+Условие service_healthy откладывает запуск приложения до готовности БД.
+
+Порт приложения опубликован как 127.0.0.1:5000:5000.
+Порт PostgreSQL на хосте не опубликован.
+Данные PostgreSQL находятся в именованном томе app_db_data,
+смонтированном в /var/lib/postgresql/data.
+Команда docker compose down сохраняет том.
+Команда docker compose down -v удаляет том и данные.
+
+Nginx использует /etc/nginx/sites-available/devops-site.
+Статический сайт остаётся в /var/www/devops-site.
+Блок location /app/ передаёт запросы через
+proxy_pass http://127.0.0.1:5000/;
+передаются заголовки Host, X-Real-IP, X-Forwarded-For
+и X-Forwarded-Proto.
+Приложение доступно по https://devops.local/app/,
+проверка процесса — по https://devops.local/app/health.
+
+Запуск проекта на сервере:
+`cd ~/app && docker compose up -d --build`.
+
+Проверка конфигурации:
+`sudo bash ~/devops-course-2026/scripts/audit.sh`.
+Раздел [5] проверяет службу Docker, готовность PostgreSQL,
+ограничение опубликованных портов и права файла .env.
