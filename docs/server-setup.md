@@ -198,3 +198,42 @@ proxy_pass http://127.0.0.1:5000/;
 `sudo bash ~/devops-course-2026/scripts/audit.sh`.
 Раздел [5] проверяет службу Docker, готовность PostgreSQL,
 ограничение опубликованных портов и права файла .env.
+
+## 10. Ansible
+
+Проект находится в каталоге `ansible/`. Управляющий узел — Ubuntu в WSL,
+управляемый — `devops-vm` с Ubuntu 26.04 и адресом Host-only
+`192.168.56.102`. SSH использует порт `22`.
+
+- `inventory/bootstrap.ini` — первичный вход под `domashev` по паролю.
+- `inventory/prod.ini` — дальнейшие запуски под `devops` по SSH-ключу с
+  неинтерактивным `sudo`.
+- `base` устанавливает зависимости и Docker Engine из официального репозитория.
+- `ssh` создаёт пользователя, добавляет открытый ключ и настраивает SSH и UFW.
+- `nginx` настраивает reverse proxy на порту `80`.
+- `app` загружает и запускает контейнер, затем проверяет `/health`.
+
+Образ — `ghcr.io/emount4/devops-ci-app`.
+Тег — `f89ace4fb11e6711b9d4ee3f3bf208a6dc1bd5f2`.
+Пакет публичный. Контейнер слушает порт `5000`, который опубликован только
+на `127.0.0.1` внутри VM. Внешняя проверка через Nginx —
+`http://192.168.56.102/health`.
+
+Команды запускаются из каталога `ansible/`:
+
+```bash
+ansible-galaxy collection install -r requirements.yml
+
+# Первичный запуск на этой Ubuntu 26.04
+ansible-playbook -i inventory/bootstrap.ini site.yml --ask-pass --ask-become-pass \
+  -e ansible_become_exe=/usr/bin/sudo.ws
+
+# Повторная настройка по ключу
+ansible-playbook site.yml
+
+# Аудит без изменения конфигурации
+ansible-playbook verify.yml
+```
+
+Для bootstrap на Ubuntu 26.04 указан `sudo.ws`, чтобы Ansible мог обработать
+запрос пароля. Последующие запуски используют `prod.ini` из `ansible.cfg`.
